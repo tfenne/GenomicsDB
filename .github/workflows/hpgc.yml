@@ -1,0 +1,78 @@
+# Builds and tests this fork's default branch on Linux x86-64 (GCC) and Linux aarch64 (clang), and
+# assembles a jar carrying both native libraries. macOS is built locally until release preparation.
+name: hpgc
+
+on:
+  push:
+    branches: [high_performance_germline_calling]
+  pull_request:
+    branches: [high_performance_germline_calling]
+  workflow_dispatch:
+
+env:
+  VERSION: 1.5.5-hpgc-ci
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+          - platform: linux-aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build the toolchain image
+        run: docker build -t hpgc-toolchain .github/hpgc
+
+      # The dependencies built from source (protobuf, OpenSSL, libcurl, libuuid and TileDB's cloud SDKs) take most of
+      # a clean build
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            ~/.m2/repository
+          key: ${{ matrix.platform }}-deps-${{ hashFiles('.github/hpgc/Dockerfile', 'CMakeLists.txt', 'cmake/Modules/BuildDistributableDependencies.cmake', 'dependencies/TileDB/CMakeLists.txt', 'dependencies/TileDB/cmake/Modules/*.cmake', 'dependencies/TileDB/cmake/patches/**') }}
+
+      - name: Build and test
+        run: |
+          mkdir -p deps ~/.m2/repository
+          docker run --rm -v "$PWD":/src -v "$HOME/.m2":/root/.m2 -w /src hpgc-toolchain \
+            .github/hpgc/build.sh "$VERSION" /src/deps
+          sudo chown -R "$(id -u):$(id -g)" . ~/.m2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: |
+            build/target/genomicsdb-${{ env.VERSION }}.jar
+            build/target/genomicsdb-${{ env.VERSION }}-allinone-spark.jar
+            build/src/main/libtiledbgenomicsdb.so
+
+  jar:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+
+      # Start from the x86-64 jars and add the aarch64 library under its platform directory
+      - name: Assemble the multi-platform jars
+        run: |
+          mkdir -p out linux-aarch64
+          cp linux-aarch64/src/main/libtiledbgenomicsdb.so linux-aarch64/libtiledbgenomicsdb.so
+          for jar in genomicsdb-$VERSION.jar genomicsdb-$VERSION-allinone-spark.jar; do
+            cp "linux-x86_64/target/$jar" "out/$jar"
+            zip -q "out/$jar" linux-aarch64/libtiledbgenomicsdb.so
+            unzip -l "out/$jar" | grep -E '(linux-x86_64|linux-aarch64)/libtiledbgenomicsdb.so'
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: genomicsdb-jars
+          path: out/*.jar
