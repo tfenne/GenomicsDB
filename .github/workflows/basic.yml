@@ -64,7 +64,7 @@ jobs:
           ${{env.PREREQS_INSTALL_DIR}}
           ~/awssdk-install
           ~/gcssdk-install
-          ~/protobuf-install/${{env.PROTOBUF_VERSION}}
+          ${{github.workspace}}/deps/*/protobuf-install/${{env.PROTOBUF_VERSION}}
         key: ${{matrix.os}}-cache-prereqs-${{env.PROTOBUF_VERSION}}-v1
 
     - name: Cache Distributed FileSystems

@@ -52,6 +52,11 @@ message(STATUS "GenomicsDB version=${GENOMICSDB_BASE_VERSION} full_version=${GEN
 
 #project
 project(GenomicsDB DESCRIPTION "High performance data storage for import/query/transform of variants" VERSION ${GENOMICSDB_BASE_VERSION})
+
+# char is signed on x86-64 and Apple arm64 but unsigned on other ARM targets. The
+# missing value for char fields (TileDB's TILEDB_EMPTY_CHAR, CHAR_MAX) is stored in
+# workspaces, so char is signed everywhere to keep workspaces interchangeable.
+add_compile_options(-fsigned-char)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/Modules")
 
 if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -81,9 +86,22 @@ option(DISABLE_TOOLS "Disable build of tools")
 
 set(HTSLIB_INSTALL_DIR "" CACHE PATH "Path to htslib install directory")
 
+# Dependencies the build downloads and builds (protobuf, nanoarrow and, with a TileDB that
+# supports TILEDB_DEPS_INSTALL_DIR, TileDB's cloud SDKs) go in GENOMICSDB_DEPS_DIR, one
+# directory per compiler and architecture, so build trees share them without mixing toolchains
+set(GENOMICSDB_DEPS_DIR "${CMAKE_SOURCE_DIR}/deps" CACHE PATH "Directory for dependencies built from source")
+if(CMAKE_OSX_ARCHITECTURES)
+  string(REPLACE ";" "-" GENOMICSDB_DEPS_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+else()
+  set(GENOMICSDB_DEPS_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+string(TOLOWER "${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}-${GENOMICSDB_DEPS_ARCH}" GENOMICSDB_TOOLCHAIN)
+set(GENOMICSDB_TOOLCHAIN_DEPS_DIR "${GENOMICSDB_DEPS_DIR}/${GENOMICSDB_TOOLCHAIN}")
+set(TILEDB_DEPS_INSTALL_DIR "${GENOMICSDB_TOOLCHAIN_DEPS_DIR}" CACHE PATH "Directory TileDB builds its cloud SDKs in")
+
 #Sync the GENOMICSDB_PROTOBUF_VERSION with protobuf.version in pom.xml!
 set(GENOMICSDB_PROTOBUF_VERSION "3.21.7" CACHE STRING "Version of Google Protocol Buffer library")
-set(PROTOBUF_ROOT_DIR "$ENV{HOME}/protobuf-install/${GENOMICSDB_PROTOBUF_VERSION}" CACHE PATH "Path to installed protobuf")
+set(PROTOBUF_ROOT_DIR "${GENOMICSDB_TOOLCHAIN_DEPS_DIR}/protobuf-install/${GENOMICSDB_PROTOBUF_VERSION}" CACHE PATH "Path to installed protobuf")
 set(PROTOBUF_URL "https://github.com/protocolbuffers/protobuf/archive/v${GENOMICSDB_PROTOBUF_VERSION}.zip" CACHE STRING "URL to protobuf github release")
 set(PROTOBUF_REGENERATE True CACHE BOOL "Regenerate protocol buffers C++ files")
 set(GENERATE_PROTOBUF_FILES_IN_BUILD_DIR True CACHE BOOL "Generate all protobuf files in build directory")
@@ -96,7 +114,7 @@ set(LIBCSV_DIR "" CACHE PATH "Path to libcsv header and library")
 option(BUILD_NANOARROW "Include nanoarrow into the genomicsdb library")
 if(BUILD_NANOARROW)
   set(NANOARROW_VERSION "0.5.0" CACHE STRING "Version of the nanoarrow release")
-  set(NANOARROW_ROOT_DIR "$ENV{HOME}/nanoarrow-install/${NANOARROW_VERSION}" CACHE PATH "Path to installed nanoarrow")
+  set(NANOARROW_ROOT_DIR "${GENOMICSDB_TOOLCHAIN_DEPS_DIR}/nanoarrow-install/${NANOARROW_VERSION}" CACHE PATH "Path to installed nanoarrow")
   set(NANOARROW_URL "https://github.com/apache/arrow-nanoarrow/archive/refs/tags/apache-arrow-nanoarrow-${NANOARROW_VERSION}.zip")
 endif()
 
@@ -129,7 +147,7 @@ endif()
 message(STATUS "CMAKE_BUILD_TYPE=" ${CMAKE_BUILD_TYPE})
 
 set(USE_HDFS False CACHE BOOL "Enables HDFS support")
-set(BUILD_FOR_ARCH "" CACHE STRING "Arch for which to build - values passed to -march= option for gcc")
+set(BUILD_FOR_ARCH "" CACHE STRING "Instruction set to compile for, as a -march value, e.g. x86-64-v3")
 
 # The DOWNLOAD_EXTRACT_TIMESTAMP option to the ExternalProject_Add() command is used to explicitly specify
 # how timestamps should be handled. The default behavior is to set the timestamps of extracted contents to
@@ -160,13 +178,30 @@ endif()
 include(CheckIncludeFileCXX)
 include(CheckCXXSymbolExists)
    
-#Optimization flag
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND BUILD_FOR_ARCH)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=${BUILD_FOR_ARCH}")
+#Instruction set for the C and C++ code of GenomicsDB, TileDB, which is built as a subproject, and htslib (see
+#Findhtslib.cmake). Empty keeps the compiler's default. Dependencies built into GENOMICSDB_DEPS_DIR keep it too
+if(BUILD_FOR_ARCH)
+  add_compile_options(-march=${BUILD_FOR_ARCH})
 endif()
 
 if(BUILD_FOR_PYTHON OR BUILD_FOR_GO OR BUILD_FOR_R)
   set(BUILD_BINDINGS TRUE)
+endif()
+
+#Link-time optimisation of GenomicsDB and of TileDB, which is built as a subproject, so that GenomicsDB can inline
+#TileDB's per-cell iterator calls. htslib is built by its own build system and is not included. Clang only: GCC 15's
+#LTO stops with an internal compiler error on x86-64. Not for the language bindings, which link the static library,
+#whose objects would then be LTO objects
+set(ENABLE_LTO True CACHE BOOL "Link-time optimisation of GenomicsDB and TileDB in Release builds with clang")
+if(ENABLE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT BUILD_BINDINGS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT LTO_SUPPORTED OUTPUT LTO_CHECK_OUTPUT LANGUAGES C CXX)
+  if(LTO_SUPPORTED)
+    message(STATUS "Link-time optimisation enabled")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION True)
+  else()
+    message(WARNING "Building without link-time optimisation, which this toolchain does not support: ${LTO_CHECK_OUTPUT}")
+  endif()
 endif()
 
 if(BUILD_DISTRIBUTABLE_LIBRARY OR BUILD_BINDINGS)

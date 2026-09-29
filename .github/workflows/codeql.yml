@@ -79,7 +79,7 @@ jobs:
           ~/.m2/repository
           ~/awssdk-install
           ~/gcssdk-install
-          ~/protobuf-install
+          ${{github.workspace}}/deps
         key: ubuntu-codeql-cache-prereqs-v1
 
     - name: Build GenomicsDB

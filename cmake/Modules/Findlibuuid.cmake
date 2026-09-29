@@ -28,7 +28,12 @@
 # Once done this will define
 # LIBUUID_FOUND - libuuid found
 
+# Kernel.framework also has uuid/uuid.h, and its Headers directory on the include
+# path shadows the SDK's C headers, so frameworks are not searched
+set(_LIBUUID_FIND_FRAMEWORK ${CMAKE_FIND_FRAMEWORK})
+set(CMAKE_FIND_FRAMEWORK NEVER)
 find_path(LIBUUID_INCLUDE_DIR NAMES uuid/uuid.h HINTS "${LIBUUID_DIR}/include" "${LIBUUID_DIR}")
+set(CMAKE_FIND_FRAMEWORK ${_LIBUUID_FIND_FRAMEWORK})
 
 if(APPLE)
   include(FindPackageHandleStandardArgs)
