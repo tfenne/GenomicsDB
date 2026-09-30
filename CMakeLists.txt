@@ -96,8 +96,16 @@ else()
   set(GENOMICSDB_DEPS_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 string(TOLOWER "${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}-${GENOMICSDB_DEPS_ARCH}" GENOMICSDB_TOOLCHAIN)
+#A distributable library's dependencies, including TileDB's cloud SDKs, are built against its static OpenSSL
+#and libcurl, so they are kept apart from those of other builds
+if(BUILD_DISTRIBUTABLE_LIBRARY AND NOT APPLE)
+  string(APPEND GENOMICSDB_TOOLCHAIN "-distributable")
+endif()
 set(GENOMICSDB_TOOLCHAIN_DEPS_DIR "${GENOMICSDB_DEPS_DIR}/${GENOMICSDB_TOOLCHAIN}")
 set(TILEDB_DEPS_INSTALL_DIR "${GENOMICSDB_TOOLCHAIN_DEPS_DIR}" CACHE PATH "Directory TileDB builds its cloud SDKs in")
+if(BUILD_DISTRIBUTABLE_LIBRARY AND NOT APPLE)
+  include(BuildDistributableDependencies)
+endif()
 
 #Sync the GENOMICSDB_PROTOBUF_VERSION with protobuf.version in pom.xml!
 set(GENOMICSDB_PROTOBUF_VERSION "3.21.7" CACHE STRING "Version of Google Protocol Buffer library")
@@ -212,10 +220,15 @@ if(BUILD_DISTRIBUTABLE_LIBRARY OR BUILD_BINDINGS)
 endif()
   
 if (BUILD_DISTRIBUTABLE_LIBRARY AND NOT BUILD_BINDINGS)
-  #For the GNU compiler, link in static gcc libraries
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  #Link in static gcc libraries, with GCC or with clang using them
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT APPLE))
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static-libgcc -static-libstdc++")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+  endif()
+  #Keep the symbols of the static libraries linked in, e.g. OpenSSL's, out of the library's exports, so that they
+  #cannot interpose on or be interposed by other copies loaded into the same process, e.g. the JVM's
+  if(NOT APPLE)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--exclude-libs,ALL")
   endif()
 endif()
 
