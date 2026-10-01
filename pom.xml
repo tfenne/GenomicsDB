@@ -5,23 +5,28 @@
   <modelVersion>4.0.0</modelVersion>
 
 
-  <groupId>org.genomicsdb</groupId>
+  <groupId>com.tfenne</groupId>
   <artifactId>genomicsdb</artifactId>
   <!-- Build version passed from parent Makefile -->
   <version>${genomicsdb.version}</version>
 
-  <name>org.genomicsdb:genomicsdb</name>
-  <description>Java API for GenomicsDB</description>
-  <url>https://github.com/GenomicsDB/GenomicsDB/wiki</url>
+  <name>com.tfenne:genomicsdb</name>
+  <description>GenomicsDB with tfenne/GenomicsDB's changes for faster joint calling: the Java API and the native libraries for Linux x86-64 and aarch64 and macOS arm64</description>
+  <url>https://github.com/tfenne/GenomicsDB</url>
 
   <licenses>
     <license>
-      <name>MIT and other recursive licenses</name>
-      <url>https://github.com/GenomicsDB/GenomicsDB/blob/master/LICENSE</url>
+      <name>MIT License</name>
+      <url>https://github.com/tfenne/GenomicsDB/blob/high_performance_germline_calling/LICENSE</url>
     </license>
   </licenses>
 
   <developers>
+    <developer>
+      <id>tfenne</id>
+      <name>Tim Fennell</name>
+      <url>https://github.com/tfenne</url>
+    </developer>
     <developer>
       <id>support</id>
       <name>Support</name>
@@ -39,21 +44,11 @@
   </developers>
 
   <scm>
-    <connection>scm:git:https://github.com/GenomicsDB/GenomicsDB.git</connection>
-    <url>https://github.com/GenomicsDB/GenomicsDB.git</url>
+    <connection>scm:git:https://github.com/tfenne/GenomicsDB.git</connection>
+    <developerConnection>scm:git:git@github.com:tfenne/GenomicsDB.git</developerConnection>
+    <url>https://github.com/tfenne/GenomicsDB</url>
   </scm>
 
-  <!-- Distribution management section to push jars to Maven central-->
-  <distributionManagement>
-    <snapshotRepository>
-      <id>ossrh</id>
-      <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-    </snapshotRepository>
-    <repository>
-      <id>ossrh</id>
-      <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-    </repository>
-  </distributionManagement>
 
   <properties>
     <java.version>17</java.version>
@@ -390,17 +385,6 @@
             </goals>
           </execution>
         </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.sonatype.plugins</groupId>
-        <artifactId>nexus-staging-maven-plugin</artifactId>
-        <version>1.6.13</version>
-        <extensions>true</extensions>
-        <configuration>
-          <serverId>ossrh</serverId>
-          <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-          <autoReleaseAfterClose>true</autoReleaseAfterClose>
-        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
