@@ -23,15 +23,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 #
-# Builds OpenSSL, libcurl and libuuid as static, position-independent libraries for a distributable
-# library on Linux, which then depends at run time only on glibc and zlib. They are built at configure
-# time, since GenomicsDB, TileDB and TileDB's cloud SDKs all look for them when they are configured,
-# once per toolchain in GENOMICSDB_TOOLCHAIN_DEPS_DIR, and are found there through OPENSSL_ROOT_DIR,
-# CURL_PREFIX_DIR and LIBUUID_DIR.
+# Builds the static, position-independent libraries a distributable library links in: OpenSSL, and on
+# Linux libcurl and libuuid too, so that the library then depends at run time only on glibc and zlib.
+# macOS provides libcurl and libuuid itself. They are built at configure time, since GenomicsDB, TileDB
+# and TileDB's cloud SDKs all look for them when they are configured, once per toolchain in
+# GENOMICSDB_TOOLCHAIN_DEPS_DIR, and are found there through OPENSSL_ROOT_DIR, CURL_PREFIX_DIR and
+# LIBUUID_DIR.
 #
-# OpenSSL looks for its configuration and CA certificates under /etc/ssl, where Amazon Linux, Debian,
-# Ubuntu and RHEL 9 keep them; elsewhere, e.g. RHEL 8, set SSL_CERT_FILE, say to /etc/pki/tls/cert.pem.
-# libcurl uses OpenSSL's CA certificates. Only cloud storage URIs need them.
+# OpenSSL looks for its configuration and CA certificates under /etc/ssl, where macOS, Amazon Linux,
+# Debian, Ubuntu and RHEL 9 keep them; elsewhere, e.g. RHEL 8, set SSL_CERT_FILE, say to
+# /etc/pki/tls/cert.pem. On Linux, libcurl uses OpenSSL's CA certificates. Only cloud storage URIs need
+# them.
 
 set(GENOMICSDB_OPENSSL_VERSION "3.5.9" CACHE STRING "Version of OpenSSL built for a distributable library")
 set(GENOMICSDB_OPENSSL_URL_HASH "SHA256=603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
@@ -93,6 +95,13 @@ build_distributable_dependency(NAME openssl
   CONFIGURE_COMMAND perl ./Configure --prefix=${OPENSSL_INSTALL_DIR} --libdir=lib --openssldir=/etc/ssl
                     no-shared no-module no-apps no-tests no-docs CC=${CMAKE_C_COMPILER} -fPIC)
 
+set(OPENSSL_ROOT_DIR "${OPENSSL_INSTALL_DIR}")
+set(OPENSSL_USE_STATIC_LIBS True)
+set(ENV{PKG_CONFIG_PATH} "${OPENSSL_INSTALL_DIR}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+if(APPLE)
+  return()
+endif()
+
 set(CURL_INSTALL_DIR "${GENOMICSDB_TOOLCHAIN_DEPS_DIR}/curl-install/${GENOMICSDB_CURL_VERSION}")
 build_distributable_dependency(NAME curl
   URL "https://curl.se/download/curl-${GENOMICSDB_CURL_VERSION}.tar.gz"
@@ -115,11 +124,7 @@ build_distributable_dependency(NAME libuuid
                     --disable-nls --without-python --without-systemd --disable-bash-completion
                     CC=${CMAKE_C_COMPILER})
 
-set(OPENSSL_ROOT_DIR "${OPENSSL_INSTALL_DIR}")
-set(OPENSSL_USE_STATIC_LIBS True)
 set(CURL_PREFIX_DIR "${CURL_INSTALL_DIR}")
 set(LIBUUID_DIR "${LIBUUID_INSTALL_DIR}")
 #For dependencies that look them up with pkg-config, e.g. TileDB's Azure client for libuuid
-string(JOIN ":" _pkg_config_path "${OPENSSL_INSTALL_DIR}/lib/pkgconfig" "${CURL_INSTALL_DIR}/lib/pkgconfig"
-       "${LIBUUID_INSTALL_DIR}/lib/pkgconfig" "$ENV{PKG_CONFIG_PATH}")
-set(ENV{PKG_CONFIG_PATH} "${_pkg_config_path}")
+set(ENV{PKG_CONFIG_PATH} "${CURL_INSTALL_DIR}/lib/pkgconfig:${LIBUUID_INSTALL_DIR}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")

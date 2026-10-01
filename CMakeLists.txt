@@ -97,13 +97,26 @@ else()
 endif()
 string(TOLOWER "${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}-${GENOMICSDB_DEPS_ARCH}" GENOMICSDB_TOOLCHAIN)
 #A distributable library's dependencies, including TileDB's cloud SDKs, are built against its static OpenSSL
-#and libcurl, so they are kept apart from those of other builds
-if(BUILD_DISTRIBUTABLE_LIBRARY AND NOT APPLE)
-  string(APPEND GENOMICSDB_TOOLCHAIN "-distributable")
+#(and on Linux its static libcurl), and on macOS for its minimum macOS version, so they are kept apart from those
+#of other builds
+if(BUILD_DISTRIBUTABLE_LIBRARY)
+  if(APPLE)
+    #The dependencies built from source, among them the many TileDB's cloud SDKs build, take the minimum macOS
+    #version from the environment when they are configured and compiled, which happens during the build
+    if("$ENV{MACOSX_DEPLOYMENT_TARGET}" STREQUAL "" OR
+       NOT "$ENV{MACOSX_DEPLOYMENT_TARGET}" STREQUAL "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+      message(FATAL_ERROR "A distributable macOS library needs MACOSX_DEPLOYMENT_TARGET, e.g. 14.0, set in the "
+                          "environment of both the configure and the build; CMAKE_OSX_DEPLOYMENT_TARGET, if "
+                          "given, must equal it")
+    endif()
+    string(APPEND GENOMICSDB_TOOLCHAIN "-distributable-macos${CMAKE_OSX_DEPLOYMENT_TARGET}")
+  else()
+    string(APPEND GENOMICSDB_TOOLCHAIN "-distributable")
+  endif()
 endif()
 set(GENOMICSDB_TOOLCHAIN_DEPS_DIR "${GENOMICSDB_DEPS_DIR}/${GENOMICSDB_TOOLCHAIN}")
 set(TILEDB_DEPS_INSTALL_DIR "${GENOMICSDB_TOOLCHAIN_DEPS_DIR}" CACHE PATH "Directory TileDB builds its cloud SDKs in")
-if(BUILD_DISTRIBUTABLE_LIBRARY AND NOT APPLE)
+if(BUILD_DISTRIBUTABLE_LIBRARY)
   include(BuildDistributableDependencies)
 endif()
 
