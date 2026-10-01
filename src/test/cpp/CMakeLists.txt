@@ -46,6 +46,7 @@ set(CPP_TEST_SOURCES
   src/test_mem_utils.cc
   src/test_vid_mapper.cc
   src/test_vcf2binary.cc
+  src/test_lut.cc
   )
 
 if(LIBDBI_FOUND)
