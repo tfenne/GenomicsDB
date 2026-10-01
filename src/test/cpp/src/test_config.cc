@@ -28,6 +28,7 @@
 #include <catch2/catch.hpp>
 
 #include "genomicsdb_config_base.h"
+#include "test_base.h"
 #include "tiledb_utils.h"
 #include "variant_query_config.h"
 
@@ -237,4 +238,27 @@ TEST_CASE("Check skip_spanning_deletion_only_intervals is read from json", "[con
   query_config.read_from_JSON_string(query_json_str);
   CHECK(query_config.skip_spanning_deletion_only_intervals() == true);
   CHECK(query_config.skip_reference_only_intervals() == false);
+}
+
+TEST_CASE("Check vcf_read_buffer_size defaults to 64 KiB in json", "[config_vcf_read_buffer_size_default]") {
+  GenomicsDBImportConfig loader_config;
+  loader_config.read_from_file(loader_json);
+  CHECK(loader_config.get_vcf_read_buffer_size() == 65536);
+}
+
+TEST_CASE_METHOD(TempDir, "Check vcf_read_buffer_size is read from json", "[config_vcf_read_buffer_size]") {
+  char *loader_json_buffer=NULL;
+  size_t loader_json_buffer_length;
+  REQUIRE(TileDBUtils::read_entire_file(loader_json, (void **)&loader_json_buffer, &loader_json_buffer_length) == TILEDB_OK);
+  std::string loader_json_str(loader_json_buffer, loader_json_buffer_length);
+  free(loader_json_buffer);
+  auto open_brace = loader_json_str.find('{');
+  REQUIRE(open_brace != std::string::npos);
+  loader_json_str.insert(open_brace+1, "\"vcf_read_buffer_size\": 1048576,");
+  auto loader_json_with_buffer_size = append("loader.json");
+  REQUIRE(TileDBUtils::write_file(loader_json_with_buffer_size, loader_json_str.c_str(), loader_json_str.length()) == TILEDB_OK);
+
+  GenomicsDBImportConfig loader_config;
+  loader_config.read_from_file(loader_json_with_buffer_size);
+  CHECK(loader_config.get_vcf_read_buffer_size() == 1048576);
 }

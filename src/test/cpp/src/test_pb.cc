@@ -25,6 +25,7 @@
 #include "json_config.h"
 #include "variant_query_config.h"
 #include "genomicsdb_export_config.pb.h"
+#include "genomicsdb_import_config.pb.h"
 #include "vid_mapper_pb.h"
 
 #include "test_common.h"
@@ -185,6 +186,27 @@ TEST_CASE("pb_skip_spanning_deletion_only_intervals_test", "[protobuf_config_ski
   pb_config.read_from_PB(&export_config, 0);
   CHECK(pb_config.skip_spanning_deletion_only_intervals() == true);
   CHECK(pb_config.skip_reference_only_intervals() == false);
+}
+
+TEST_CASE("pb_vcf_read_buffer_size_test", "[protobuf_import_config_vcf_read_buffer_size]")
+{
+  genomicsdb_pb::ImportConfiguration import_config;
+  import_config.set_size_per_column_partition(700);
+  import_config.set_vid_mapping_file(ctests_input_dir+"vid.json");
+  import_config.set_callset_mapping_file(ctests_input_dir+"callset_t0_1_2.json");
+  auto* partition = import_config.add_column_partitions();
+  partition->mutable_begin()->set_tiledb_column(0);
+  partition->set_workspace(ctests_input_dir+"ws");
+  partition->set_array_name("t0_1_2");
+
+  GenomicsDBImportConfig default_config;
+  default_config.read_from_PB(&import_config, 0);
+  CHECK(default_config.get_vcf_read_buffer_size() == 65536);
+
+  import_config.set_vcf_read_buffer_size(1048576);
+  GenomicsDBImportConfig pb_config;
+  pb_config.read_from_PB(&import_config, 0);
+  CHECK(pb_config.get_vcf_read_buffer_size() == 1048576);
 }
 
 TEST_CASE("pb_vid_mapping_test", "[vid_protobuf_config]")
