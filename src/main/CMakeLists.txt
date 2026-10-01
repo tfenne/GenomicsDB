@@ -96,6 +96,7 @@ if(BUILD_JAVA)
         jni/src/genomicsdb_GenomicsDBQuery.cc
         jni/src/genomicsdb_GenomicsDBQueryStream.cc
         jni/src/genomicsdb_jni_init.cc
+        jni/src/genomicsdb_jni_onload.cc
         )
 endif()
 
