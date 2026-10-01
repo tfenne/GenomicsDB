@@ -74,7 +74,7 @@ Effects are measured as pairs in the same benchmark pass, at 100 / 1,000 samples
 | [`perf/query-overheads`](https://github.com/tfenne/GenomicsDB/tree/perf/query-overheads) | – | The allele look-up tables are reset only where written instead of in full per record (a 1–2 MB memset at 1,000 samples), with fixed-width stores rather than a memset per row; a missing field is recognised before it is copied; END copies of cells are skipped before all their attributes are fetched. | No | Gnarly −9.9% at 1,000, with the TileDB iterator change |
 | [`perf/vcf-import`](https://github.com/tfenne/GenomicsDB/tree/perf/vcf-import) | – | Each INFO/FORMAT field is resolved once per input file instead of by name per record, and only the fields a record has are fetched from htslib; the readers are cast once per partition instead of `dynamic_cast` per field per record; allele-specific annotations, strings in the gVCF, are parsed without allocating per value; a `vcf_read_buffer_size` import option (default 64 KiB) for VCF files read directly. | No | import −33% / −26% ¹ (fields), then −34% / −27% ¹ (casts); then −13.1% at 1,000 (−27.5% with allele-specific annotations) for fetching and parsing |
 | [`fork/tiledb`](https://github.com/tfenne/GenomicsDB/tree/fork/tiledb) | fork only | Builds TileDB from [tfenne/TileDB](https://github.com/tfenne/TileDB): attribute files held open across tile reads, compressed tiles read with `pread`, inline C API checks, zstd compiled in (upstream loads `libzstd` at run time and aborts the JVM without it) with its decompression context freed correctly (upstream crashed in 6 of 100 runs of a small zstd query, at thread exit), a build for current toolchains, an array iterator that no longer copies its attribute list on every cell, and cloud SDKs built against TileDB's OpenSSL and libcurl, so that both can be static; reading a whole file no longer frees the wrong pointer when the read fails. | No | Gnarly −26% / −25% (files held open), −6.5% / −11% (`pread`) |
-| [`fork/meta`](https://github.com/tfenne/GenomicsDB/tree/fork/meta) | fork only | This README, the fork's CI, the licence notices of the software compiled into the native libraries (`THIRD-PARTY-NOTICES.txt`, which the jar carries) and the jar's Maven coordinates, `com.tfenne:genomicsdb`. | – | – |
+| [`fork/meta`](https://github.com/tfenne/GenomicsDB/tree/fork/meta) | fork only | This README, the fork's CI and release scripts, the licence notices of the software compiled into the native libraries (`THIRD-PARTY-NOTICES.txt`, which the jar carries) and the jar's Maven coordinates, `com.tfenne:genomicsdb`. | – | – |
 
 ¹ With the gVCF header as written / with only the fields in use declared.
 
@@ -95,6 +95,15 @@ cmake --build GenomicsDB/build --target genomicsdb-1.6.0-local-examples -j 8
 - **Link-time optimisation:** on for Release builds with clang (not GCC). `-DENABLE_LTO=OFF` turns it off, e.g. for profiling, where inlining folds TileDB's frames into GenomicsDB's, or to link the installed static library without LTO.
 - **With GATK:** install the jar locally (`mvn install:install-file -Dfile=GenomicsDB/build/target/genomicsdb-1.6.0-local.jar -DpomFile=GenomicsDB/build/pom.xml`), which installs it as `com.tfenne:genomicsdb:1.6.0-local`, and build tfenne/gatk against it (`./gradlew localJar -Dgenomicsdb.version=1.6.0-local`).
 - **Jars from CI** carry distributable native libraries for Linux x86-64 and aarch64 and macOS arm64.
+
+## Releasing
+
+Releases are built and published from local checkouts of the release tag rather than by CI, so that they're compiled with the toolchains the benchmarks above used: the `.github/hpgc` image's GCC 15 and clang 21 on Linux, and Apple clang 21 on macOS.
+
+1. Build each platform from its own checkout with `.github/hpgc/build.sh <version> <deps dir>`: Linux x86-64 and aarch64 in the image (`docker build -t hpgc-toolchain .github/hpgc`, then `docker run --rm -v "$PWD":/src -w /src hpgc-toolchain .github/hpgc/build.sh …`, adding `--platform linux/amd64` for x86-64 on an Arm machine), and macOS with `MACOSX_DEPLOYMENT_TARGET=14.0`.
+2. `.github/hpgc/assemble_jar.sh` adds the aarch64 and macOS libraries to the x86-64 build's jars.
+3. `.github/hpgc/central_bundle.sh` signs the jar, its pom and its sources and javadoc jars with GPG (`GPG_KEY_ID` picks the key) and bundles them for the Maven Central Portal.
+4. `.github/hpgc/central_upload.sh` uploads the bundle with a Portal user token. Once the Portal has validated it, publish it at [central.sonatype.com](https://central.sonatype.com/publishing/deployments).
 
 ## How the branch is maintained
 

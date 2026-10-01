@@ -1,6 +1,6 @@
 # Builds and tests this fork's default branch on Linux x86-64 (GCC), Linux aarch64 (clang) and macOS arm64, loads the
-# Linux libraries on several distributions, and assembles a jar carrying all three native libraries. A v* tag also
-# uploads the jar to the Maven Central Portal as com.tfenne:genomicsdb, to be published there by hand.
+# Linux libraries on several distributions, and assembles a jar carrying all three native libraries. Releases are built
+# and published locally (see the README).
 name: hpgc
 
 on:
@@ -17,7 +17,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      # A tag v1.6.0 releases 1.6.0; other builds are named after their commit
+      # A tag v1.6.0 builds version 1.6.0; other builds are named after their commit
       - id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -116,23 +116,16 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
 
-      # Start from the x86-64 jars and add the aarch64 and macOS libraries under their platform directories
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Assemble the multi-platform jars
         run: |
-          mkdir -p out linux-aarch64-lib/linux-aarch64 macos-aarch64-lib/macos-aarch64
-          cp linux-aarch64/src/main/libtiledbgenomicsdb.so linux-aarch64-lib/linux-aarch64/
-          cp macos-aarch64/libtiledbgenomicsdb.dylib macos-aarch64-lib/macos-aarch64/
-          for jar in "genomicsdb-$VERSION.jar" "genomicsdb-$VERSION-allinone-spark.jar"; do
-            cp "linux-x86_64/target/$jar" "out/$jar"
-            (cd linux-aarch64-lib && zip -q "../out/$jar" linux-aarch64/libtiledbgenomicsdb.so)
-            (cd macos-aarch64-lib && zip -q "../out/$jar" macos-aarch64/libtiledbgenomicsdb.dylib)
-            test "$(unzip -l "out/$jar" | grep -cE '(linux-x86_64|linux-aarch64|macos-aarch64)/libtiledbgenomicsdb')" = 3
-          done
-          cp "linux-x86_64/target/genomicsdb-$VERSION-sources.jar" "linux-x86_64/target/genomicsdb-$VERSION-javadoc.jar" out/
-          cp linux-x86_64/pom.xml "out/genomicsdb-$VERSION.pom"
-          ls -l out
+          .github/hpgc/assemble_jar.sh "$VERSION" artifacts/linux-x86_64/target artifacts/linux-x86_64/pom.xml \
+            artifacts/linux-aarch64/src/main/libtiledbgenomicsdb.so artifacts/macos-aarch64/libtiledbgenomicsdb.dylib out
 
       - uses: actions/upload-artifact@v4
         with:
@@ -162,51 +155,3 @@ jobs:
             docker run --rm -v "$PWD/out":/out:ro -v "$PWD/.github/hpgc":/hpgc:ro "$image" \
               /hpgc/smoke_test_on_distro.sh "/out/genomicsdb-$VERSION-allinone-spark.jar"
           done
-
-  publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [version, jar, distributions]
-    runs-on: ubuntu-24.04
-    env:
-      VERSION: ${{ needs.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: genomicsdb-jars
-          path: out
-
-      - name: Import the signing key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
-
-      - name: Bundle, sign and checksum
-        env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: .github/hpgc/central_bundle.sh "$VERSION" out "genomicsdb-$VERSION-bundle.zip"
-
-      # USER_MANAGED: the Portal validates the deployment and waits for it to be published by hand
-      - name: Upload to the Maven Central Portal
-        env:
-          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
-          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
-        run: |
-          auth="Authorization: Bearer $(printf '%s:%s' "$CENTRAL_TOKEN_USERNAME" "$CENTRAL_TOKEN_PASSWORD" | base64 -w0)"
-          id=$(curl --fail-with-body -sS -H "$auth" -F "bundle=@genomicsdb-$VERSION-bundle.zip" \
-            "https://central.sonatype.com/api/v1/publisher/upload?name=genomicsdb-$VERSION&publishingType=USER_MANAGED")
-          echo "Deployment $id"
-          for _ in $(seq 60); do
-            status=$(curl --fail-with-body -sS -X POST -H "$auth" \
-              "https://central.sonatype.com/api/v1/publisher/status?id=$id")
-            state=$(echo "$status" | jq -r .deploymentState)
-            echo "$state"
-            case "$state" in
-              VALIDATED) echo "Validated: publish it at https://central.sonatype.com/publishing/deployments"; exit 0 ;;
-              FAILED) echo "$status" | jq .; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "Still $state after 10 minutes; see https://central.sonatype.com/publishing/deployments" >&2
-          exit 1
