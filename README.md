@@ -2,6 +2,8 @@
 
 This is a fork of [GenomicsDB](https://github.com/GenomicsDB/GenomicsDB). Its default branch, `high_performance_germline_calling`, is GenomicsDB 1.5.5 (upstream `master`) plus changes that speed up GATK joint calling (GenomicsDBImport, GnarlyGenotyper and GenotypeGVCFs), a few bug fixes, and a build for current toolchains, including Linux aarch64, whose native libraries run on any Linux with glibc 2.28 or later and on macOS 14 or later. It is used by the branch of the same name in [tfenne/gatk](https://github.com/tfenne/gatk).
 
+Releases are published to Maven Central as [`com.tfenne:genomicsdb`](https://central.sonatype.com/artifact/com.tfenne/genomicsdb), with the native libraries for Linux x86-64 and aarch64 and macOS arm64 in the jar. The first, 1.6.0, is tagged `v1.6.0` and builds tfenne/TileDB `0.6.0`.
+
 Each change is on its own branch, cut from upstream `master`, so that it can be offered upstream as a pull request; this branch carries them all until they are merged. TileDB changes are in [tfenne/TileDB](https://github.com/tfenne/TileDB), which this branch builds instead of upstream's TileDB.
 
 For GenomicsDB itself (documentation, the Java and C++ APIs, support), see the [upstream README](https://github.com/GenomicsDB/GenomicsDB/blob/master/README.md).
