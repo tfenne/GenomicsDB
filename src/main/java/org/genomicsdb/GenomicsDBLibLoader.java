@@ -26,6 +26,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
+import java.util.Locale;
 
 public class GenomicsDBLibLoader {
     public final static String GENOMICSDB_LIBRARY_PATH = "genomicsdb.library.path";
@@ -51,7 +52,12 @@ public class GenomicsDBLibLoader {
                 System.load(genomicsdbLibraryFile.getAbsolutePath());
                 logger.info("GenomicsDB native library has been loaded from " + genomicsdbLibraryFile.getAbsolutePath());
             } else {
-                loadLibraryFromJar("/" + System.mapLibraryName(GENOMICSDB_LIBRARY_NAME));
+                String libraryName = System.mapLibraryName(GENOMICSDB_LIBRARY_NAME);
+                String platformPath = "/" + nativeLibraryPlatform(System.getProperty("os.name"), System.getProperty("os.arch"))
+                        + "/" + libraryName;
+                // Jars built for a single platform may hold the library at the root instead
+                boolean hasPlatformLibrary = GenomicsDBLibLoader.class.getResource(platformPath) != null;
+                loadLibraryFromJar(hasPlatformLibrary ? platformPath : "/" + libraryName);
             }
         } catch (IOException e) {
             logger.fatal("", e);
@@ -62,6 +68,26 @@ public class GenomicsDBLibLoader {
         mIsLibraryLoaded = true;
         logger.info("GenomicsDB native library version : " + GenomicsDBUtils.nativeLibraryVersion());
         return true;
+    }
+
+    /**
+     * Returns the directory inside the jar that holds the native library for a platform, as
+     * {@code <os>-<arch>}, e.g. {@code linux-x86_64}, {@code linux-aarch64} or {@code macos-aarch64}.
+     * The build writes the library to the same directory.
+     *
+     * @param osName the {@code os.name} system property
+     * @param osArch the {@code os.arch} system property
+     */
+    static String nativeLibraryPlatform(String osName, String osArch) {
+        String os = osName.toLowerCase(Locale.ROOT);
+        os = os.startsWith("mac") ? "macos" : os.split(" ")[0];
+        String arch = osArch.toLowerCase(Locale.ROOT);
+        if (arch.equals("amd64")) {
+            arch = "x86_64";
+        } else if (arch.equals("arm64")) {
+            arch = "aarch64";
+        }
+        return os + "-" + arch;
     }
 
     //Copied from http://frommyplayground.com/how-to-load-native-jni-library-from-jar 
